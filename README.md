@@ -168,18 +168,6 @@ npm run test
 
 ---
 
-## Stack family
-
-| App | Port | Layer |
-|-----|------|-------|
-| [Stratum](https://github.com/Sunradiance/stratum) | 8791 | Strategic assumptions |
-| [Keepline](https://github.com/Sunradiance/keepline) | 8792 | Committed burn |
-| **Whyline** | 8793 | Institutional decisions |
-
-Three layers. One founder who got tired of re-litigating the same decisions.
-
----
-
 ## Support (voluntary)
 
 MIT licensed. No paywall. Ever.
