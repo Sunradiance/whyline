@@ -1,0 +1,46 @@
+{
+  "display_information": {
+    "name": "Whyline",
+    "description": "Company memory engine — capture decisions from Slack threads",
+    "background_color": "#12121c"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Whyline",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/whyline",
+        "url": "https://YOUR_PUBLIC_URL/api/integrations/slack/commands",
+        "description": "Capture a decision from text or thread URL",
+        "usage_hint": "[decision text or Slack thread URL]",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:history",
+        "groups:history",
+        "channels:read",
+        "groups:read",
+        "reactions:read",
+        "commands"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://YOUR_PUBLIC_URL/api/integrations/slack/events",
+      "bot_events": [
+        "reaction_added",
+        "app_mention"
+      ]
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

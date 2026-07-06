@@ -1,0 +1,15 @@
+{
+  "name": "whyline",
+  "version": "2.5.0",
+  "description": "The why layer your company never had — SQLite memory, BM25 retrieval, MCP for Cursor, Slack/email/transcript capture. Free, local, seductively necessary.",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "dev": "node scripts/dev.js",
+    "start": "npm run dev",
+    "test": "node scripts/test.js",
+    "mcp": "node scripts/mcp.js"
+  },
+  "engines": { "node": ">=18", "python": ">=3.10" },
+  "license": "MIT",
+  "keywords": ["company-memory", "decisions", "institutional-knowledge", "slack", "atlassian", "why-layer"]
+}

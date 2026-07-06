@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "whyline": {
+      "command": "C:\\path\\to\\whyline\\scripts\\mcp-cursor.cmd",
+      "args": []
+    }
+  }
+}

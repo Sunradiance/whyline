@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Whyline — Company memory engine. Server-side SQLite. Ask why, get receipts." />
+  <title>Whyline — Company Memory Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-glow"></div>
+        <div class="brand-icon">◎</div>
+        <div>
+          <div class="brand-name">Whyline</div>
+          <div class="brand-tag">Company Memory Engine</div>
+        </div>
+      </div>
+      <p class="brand-why">Shared <em>why</em> memory — SQLite on your server, receipts on every answer.</p>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot">
+        <label class="api-key-lbl" for="api-key">API key <span class="mono">(memory only — ask admin)</span></label>
+        <input class="api-key-input" id="api-key" type="password" placeholder="WHYLINE_API_KEY" autocomplete="off" />
+        <button class="support-btn" id="btn-support" type="button"><span class="sol-badge">◎</span> Support with SOL</button>
+        <span class="mono" id="db-status">—</span>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="view-title">Ask Why</h1>
+          <p id="view-subtitle"></p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" id="btn-log-decision" type="button">+ Log decision</button>
+        </div>
+      </header>
+      <div id="views"></div>
+    </main>
+  </div>
+  <dialog id="modal" class="modal">
+    <form id="modal-form" method="dialog">
+      <header class="modal-head"><h2 id="modal-title"></h2><button type="button" class="icon-btn" id="modal-close">×</button></header>
+      <div id="modal-body" class="modal-body"></div>
+      <footer class="modal-foot"><button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button><button type="submit" class="btn btn-primary">Save</button></footer>
+    </form>
+  </dialog>
+  <dialog id="donation-modal" class="modal donation-modal">
+    <header class="modal-head"><h2>Support Whyline</h2><button type="button" class="icon-btn" id="donation-close">×</button></header>
+    <div class="modal-body" id="donation-body"></div>
+    <footer class="modal-foot"><button type="button" class="btn btn-ghost" id="donation-done">Close</button></footer>
+  </dialog>
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
