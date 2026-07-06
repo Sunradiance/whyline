@@ -140,6 +140,48 @@ class StoreIdentityMixin:
             ).fetchone()
         return row['role'] if row else None
 
+    def count_members_by_role(self, workspace_id: str, role: str) -> int:
+        with self._conn() as c:
+            row = c.execute(
+                'SELECT COUNT(*) AS n FROM memberships WHERE workspace_id = ? AND role = ?',
+                (workspace_id, role),
+            ).fetchone()
+        return row['n'] if row else 0
+
+    def remove_member(self, workspace_id: str, user_id: str) -> bool:
+        with self._conn() as c:
+            cur = c.execute(
+                'DELETE FROM memberships WHERE workspace_id = ? AND user_id = ?',
+                (workspace_id, user_id),
+            )
+            return cur.rowcount == 1
+
+    def list_service_tokens(self, workspace_id: str) -> list:
+        with self._conn() as c:
+            rows = c.execute(
+                'SELECT id, workspace_id, name, role, created_at, last_used_at '
+                'FROM service_tokens WHERE workspace_id = ? ORDER BY created_at',
+                (workspace_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_service_token(self, token_id: str, workspace_id: str) -> dict | None:
+        with self._conn() as c:
+            row = c.execute(
+                'SELECT id, workspace_id, name, role, created_at, last_used_at '
+                'FROM service_tokens WHERE id = ? AND workspace_id = ?',
+                (token_id, workspace_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def revoke_service_token(self, token_id: str, workspace_id: str) -> bool:
+        with self._conn() as c:
+            cur = c.execute(
+                'DELETE FROM service_tokens WHERE id = ? AND workspace_id = ?',
+                (token_id, workspace_id),
+            )
+            return cur.rowcount == 1
+
     def can(self, user_id: str, workspace_id: str, action: str) -> bool:
         role = self.get_role(user_id, workspace_id)
         return role_can(role, action) if role else False

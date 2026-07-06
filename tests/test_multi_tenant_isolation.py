@@ -239,6 +239,115 @@ def test_owner_can_demote_admin(app_client_factory, store):
     assert store.get_role(sub['id'], ws['id']) == 'member'
 
 
+def test_owner_can_remove_member_and_access_lost(app_client_factory, store):
+    ws = store.create_workspace('Offboard')
+    owner = store.create_user('owner@co.com', 'pass-12345')
+    departing = store.create_user('depart@co.com', 'pass-12345')
+    store.add_member(ws['id'], owner['id'], 'owner')
+    store.add_member(ws['id'], departing['id'], 'member')
+    owner_token, _ = store.create_service_token(ws['id'], role='owner', name='owner')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='owner')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/members/{departing['id']}",
+        headers={'X-Whyline-Key': owner_token},
+    )
+    assert r.status_code == 200
+    assert store.get_role(departing['id'], ws['id']) is None
+
+    with client.session_transaction() as sess:
+        sess['user_id'] = departing['id']
+    r2 = client.get(f'/api/decisions?workspace={ws["id"]}')
+    assert r2.status_code in (401, 403)
+
+
+def test_admin_cannot_remove_owner_member(app_client_factory, store):
+    ws = store.create_workspace('NoRemoveOwner')
+    boss = store.create_user('boss@co.com', 'pass-12345')
+    store.add_member(ws['id'], boss['id'], 'owner')
+    store.add_member(ws['id'], store.create_user('admin@co.com', 'pass-12345')['id'], 'admin')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/members/{boss['id']}",
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 403
+    assert store.get_role(boss['id'], ws['id']) == 'owner'
+
+
+def test_admin_can_remove_viewer(app_client_factory, store):
+    ws = store.create_workspace('RemoveViewer')
+    viewer = store.create_user('view@co.com', 'pass-12345')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    store.add_member(ws['id'], viewer['id'], 'viewer')
+    store.add_member(ws['id'], store.create_user('admin@co.com', 'pass-12345')['id'], 'admin')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/members/{viewer['id']}",
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 200
+    assert store.get_role(viewer['id'], ws['id']) is None
+
+
+def test_revoked_token_loses_access(app_client_factory, store):
+    ws = store.create_workspace('RevokeTok')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    leaked, leaked_row = store.create_service_token(ws['id'], role='member', name='leaked')
+    owner_token, owner_row = store.create_service_token(ws['id'], role='owner', name='owner')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='owner')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/tokens/{leaked_row['id']}",
+        headers={'X-Whyline-Key': owner_token},
+    )
+    assert r.status_code == 200
+    assert store.verify_service_token(leaked) is None
+    r2 = client.get('/api/decisions', headers={'X-Whyline-Key': leaked})
+    assert r2.status_code == 401
+
+
+def test_admin_cannot_revoke_owner_token(app_client_factory, store):
+    ws = store.create_workspace('NoRevokeOwnerTok')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    store.add_member(ws['id'], store.create_user('admin@co.com', 'pass-12345')['id'], 'admin')
+    owner_tok_raw, owner_tok_row = store.create_service_token(ws['id'], role='owner', name='boss-key')
+    admin_token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/tokens/{owner_tok_row['id']}",
+        headers={'X-Whyline-Key': admin_token},
+    )
+    assert r.status_code == 403
+    assert store.verify_service_token(owner_tok_raw) is not None
+
+
+def test_cannot_revoke_active_token(app_client_factory, store):
+    ws = store.create_workspace('SelfRevoke')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    owner_token, owner_row = store.create_service_token(ws['id'], role='owner', name='active')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='owner')
+    r = client.delete(
+        f"/api/workspaces/{ws['id']}/tokens/{owner_row['id']}",
+        headers={'X-Whyline-Key': owner_token},
+    )
+    assert r.status_code == 403
+    assert store.verify_service_token(owner_token) is not None
+
+
+def test_cannot_revoke_token_in_other_workspace(app_client_factory, store, two_workspaces):
+    a = two_workspaces['a']
+    b = two_workspaces['b']
+    _, b_row = store.create_service_token(b['id'], role='member', name='b-token')
+    a_token, _ = store.create_service_token(a['id'], role='owner', name='a-owner')
+    client, _ = app_client_factory(workspace_id=a['id'], role='owner')
+    r = client.delete(
+        f"/api/workspaces/{a['id']}/tokens/{b_row['id']}",
+        headers={'X-Whyline-Key': a_token},
+    )
+    assert r.status_code == 404
+
+
 def test_service_token_cannot_create_workspace(app_client_factory, store):
     ws = store.create_workspace('NoOrphan')
     token, _ = store.create_service_token(ws['id'], role='admin', name='admin')

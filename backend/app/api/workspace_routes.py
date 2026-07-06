@@ -34,13 +34,45 @@ def _guard_role_assignment(role: str, actor_role: str) -> tuple | None:
     return None
 
 
+def _guard_target_rank(actor_role: str, target_current_role: str | None, verb: str = 'modify') -> tuple | None:
+    if target_current_role is None:
+        return jsonify({'error': 'not found'}), 404
+    if _role_rank(target_current_role) >= _role_rank(actor_role):
+        return jsonify({'error': f'cannot {verb} a member at or above your role'}), 403
+    return None
+
+
 def _guard_membership_change(actor_role: str, target_current_role: str | None, new_role: str) -> tuple | None:
     blocked = _guard_role_assignment(new_role, actor_role)
     if blocked:
         return blocked
-    if target_current_role is not None and _role_rank(target_current_role) >= _role_rank(actor_role):
-        return jsonify({'error': 'cannot modify a member at or above your role'}), 403
+    if target_current_role is not None:
+        blocked = _guard_target_rank(actor_role, target_current_role, 'modify')
+        if blocked:
+            return blocked
     return None
+
+
+def _guard_member_removal(actor_role: str, target_current_role: str | None, workspace_id: str) -> tuple | None:
+    blocked = _guard_target_rank(actor_role, target_current_role, 'remove')
+    if blocked:
+        return blocked
+    if target_current_role == 'owner' and store.count_members_by_role(workspace_id, 'owner') <= 1:
+        return jsonify({'error': 'cannot remove the last owner'}), 403
+    return None
+
+
+def _guard_token_revocation(actor_role: str, token_role: str, actor_token_id: str | None, target_token_id: str) -> tuple | None:
+    if _role_rank(token_role) >= _role_rank(actor_role):
+        return jsonify({'error': 'cannot revoke a token at or above your role'}), 403
+    if actor_token_id and actor_token_id == target_token_id:
+        return jsonify({'error': 'cannot revoke the token you are currently using'}), 403
+    return None
+
+
+def _actor_token_id():
+    actor = getattr(g, 'actor', None)
+    return actor.id if actor and actor.kind == 'service' else None
 
 
 @api_bp.route('/workspaces', methods=['GET'])
@@ -133,6 +165,26 @@ def add_workspace_member(workspace_id):
     return jsonify({'ok': True, 'membership': m})
 
 
+@api_bp.route('/workspaces/<workspace_id>/members/<user_id>', methods=['DELETE'])
+@require_workspace('manage')
+@require_csrf
+def remove_workspace_member(workspace_id, user_id):
+    target_current = store.get_role(user_id, g.workspace_id)
+    blocked = _guard_member_removal(_actor_role() or '', target_current, g.workspace_id)
+    if blocked:
+        return blocked
+    if not store.remove_member(g.workspace_id, user_id):
+        return jsonify({'error': 'not found'}), 404
+    store.audit(g.workspace_id, g.actor.kind, g.actor.id, 'member.remove', 'user', user_id)
+    return jsonify({'ok': True, 'removed': user_id})
+
+
+@api_bp.route('/workspaces/<workspace_id>/tokens', methods=['GET'])
+@require_workspace('manage')
+def list_workspace_tokens(workspace_id):
+    return jsonify({'ok': True, 'tokens': store.list_service_tokens(g.workspace_id)})
+
+
 @api_bp.route('/workspaces/<workspace_id>/tokens', methods=['POST'])
 @require_workspace('manage')
 @require_csrf
@@ -147,6 +199,27 @@ def create_workspace_token(workspace_id):
     raw, row = store.create_service_token(g.workspace_id, role=role, name=body.get('name', ''))
     store.audit(g.workspace_id, g.actor.kind, g.actor.id, 'token.create', 'service_token', row['id'])
     return jsonify({'ok': True, 'token': raw, 'meta': row, 'note': 'Shown once — store securely.'})
+
+
+@api_bp.route('/workspaces/<workspace_id>/tokens/<token_id>', methods=['DELETE'])
+@require_workspace('manage')
+@require_csrf
+def revoke_workspace_token(workspace_id, token_id):
+    row = store.get_service_token(token_id, g.workspace_id)
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    blocked = _guard_token_revocation(
+        _actor_role() or '',
+        row['role'],
+        _actor_token_id(),
+        token_id,
+    )
+    if blocked:
+        return blocked
+    if not store.revoke_service_token(token_id, g.workspace_id):
+        return jsonify({'error': 'not found'}), 404
+    store.audit(g.workspace_id, g.actor.kind, g.actor.id, 'token.revoke', 'service_token', token_id)
+    return jsonify({'ok': True, 'revoked': token_id})
 
 
 @api_bp.route('/workspaces/<workspace_id>/audit', methods=['GET'])
