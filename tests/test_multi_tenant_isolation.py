@@ -169,6 +169,7 @@ def test_migration_from_legacy_single_key(monkeypatch):
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'solo')
     monkeypatch.setenv('WHYLINE_API_KEY', 'legacy-god-key')
     _purge()
     from app.store.sqlite import Store

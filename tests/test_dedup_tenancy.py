@@ -103,6 +103,10 @@ def test_bare_store_never_resurrects_global_hash_index(monkeypatch):
 
 
 def test_mcp_workspace_fails_closed_in_team_mode(monkeypatch):
+    """Fresh DB + team mode: stray WHYLINE_API_KEY must not become admin token."""
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
     monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
     monkeypatch.delenv('MCP_WORKSPACE_ID', raising=False)
     monkeypatch.setenv('WHYLINE_API_KEY', 'not-a-service-token')
@@ -111,7 +115,36 @@ def test_mcp_workspace_fails_closed_in_team_mode(monkeypatch):
             del __import__('sys').modules[name]
     from app.config import Config
     from app.services.mcp_workspace import resolve_mcp_workspace_id
+    from app.store.sqlite import Store
+
+    Store(path=db_path)
     Config.AUTH_MODE = 'team'
     Config.WHYLINE_API_KEY = 'not-a-service-token'
     with pytest.raises(RuntimeError, match='MCP requires'):
         resolve_mcp_workspace_id()
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
+
+
+def test_god_key_not_migrated_in_team_mode(monkeypatch):
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
+    monkeypatch.setenv('WHYLINE_API_KEY', 'legacy-god-key')
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.migration_001 import migrate as migrate_001
+    from app.store.sqlite import Store
+
+    s = Store(path=db_path, migrate=False)
+    r = migrate_001(s)
+    assert r['god_key_migrated'] is False
+    assert s.verify_service_token('legacy-god-key') is None
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass

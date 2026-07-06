@@ -141,7 +141,9 @@ def migrate(store) -> dict:
             if os.path.exists(key_path):
                 with open(key_path) as f:
                     legacy_key = f.read().strip()
-        if legacy_key and _get_meta(c, 'god_key_migrated') != '1':
+        # Solo-only: never mint admin from WHYLINE_API_KEY in team/open deployments.
+        auth_mode = os.environ.get('WHYLINE_AUTH_MODE', 'solo').strip().lower()
+        if legacy_key and auth_mode == 'solo' and _get_meta(c, 'god_key_migrated') != '1':
             th = _token_hash(legacy_key)
             exists = c.execute('SELECT 1 FROM service_tokens WHERE token_hash = ?', (th,)).fetchone()
             if not exists:
