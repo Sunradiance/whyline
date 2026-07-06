@@ -37,7 +37,7 @@ def test_supersede(store):
     ws = _ws(store)
     old = store.upsert_decision({'title': 'Old policy', 'summary': '', 'reasoning': 'was'}, workspace_id=ws)
     new = store.upsert_decision({'title': 'New policy', 'summary': '', 'reasoning': 'now'}, workspace_id=ws)
-    store.supersede(old['id'], new['id'])
+    store.supersede(old['id'], new['id'], workspace_id=ws)
     updated = store.get_decision(old['id'], workspace_id=ws)
     assert updated['status'] == 'superseded'
     assert updated['supersededBy'] == new['id']

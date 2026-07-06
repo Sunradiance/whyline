@@ -163,8 +163,12 @@ def patch_decision(decision_id):
 @require_csrf
 def supersede_decision(decision_id):
     body = request.get_json(silent=True) or {}
+    if not store.get_decision(decision_id, workspace_id=_ws()):
+        return jsonify({'error': 'not found'}), 404
     new_d = store.upsert_decision(body, workspace_id=_ws())
-    store.supersede(decision_id, new_d['id'])
+    old = store.supersede(decision_id, new_d['id'], workspace_id=_ws())
+    if not old:
+        return jsonify({'error': 'not found'}), 404
     return jsonify({'ok': True, 'superseded': decision_id, 'replacement': new_d})
 
 

@@ -396,11 +396,7 @@ class Store(StoreIdentityMixin):
                 existing[k] = v
         existing['updatedAt'] = _now()
         with self._conn() as c:
-            c.execute('''
-                UPDATE decisions SET title=?, summary=?, reasoning=?, alternatives=?, decided_by=?, decided_at=?,
-                    status=?, superseded_by=?, superseded_at=?, topic_ids=?, confidence=?, source_type=?, updated_at=?
-                WHERE id=?
-            ''', (
+            params = (
                 existing['title'], existing['summary'], existing['reasoning'],
                 json.dumps(existing.get('alternativesConsidered') or []),
                 existing.get('decidedBy'), existing.get('decidedAt'),
@@ -410,26 +406,66 @@ class Store(StoreIdentityMixin):
                 existing.get('confidence', 3),
                 existing.get('sourceType', 'manual'),
                 existing['updatedAt'], decision_id,
-            ))
+            )
+            if workspace_id:
+                c.execute('''
+                    UPDATE decisions SET title=?, summary=?, reasoning=?, alternatives=?, decided_by=?, decided_at=?,
+                        status=?, superseded_by=?, superseded_at=?, topic_ids=?, confidence=?, source_type=?, updated_at=?
+                    WHERE id=? AND workspace_id=?
+                ''', (*params, workspace_id))
+            else:
+                c.execute('''
+                    UPDATE decisions SET title=?, summary=?, reasoning=?, alternatives=?, decided_by=?, decided_at=?,
+                        status=?, superseded_by=?, superseded_at=?, topic_ids=?, confidence=?, source_type=?, updated_at=?
+                    WHERE id=?
+                ''', params)
             if self._has_sensitive_column() and patch.get('sensitive') is not None:
-                c.execute('UPDATE decisions SET sensitive = ? WHERE id = ?',
-                          (1 if patch.get('sensitive') else 0, decision_id))
+                if workspace_id:
+                    c.execute(
+                        'UPDATE decisions SET sensitive = ? WHERE id = ? AND workspace_id = ?',
+                        (1 if patch.get('sensitive') else 0, decision_id, workspace_id),
+                    )
+                else:
+                    c.execute(
+                        'UPDATE decisions SET sensitive = ? WHERE id = ?',
+                        (1 if patch.get('sensitive') else 0, decision_id),
+                    )
         return self.get_decision(decision_id, workspace_id=workspace_id)
 
-    def supersede(self, old_id: str, new_id: str) -> Optional[dict]:
+    def supersede(self, old_id: str, new_id: str, workspace_id: str = None) -> Optional[dict]:
+        old = self.get_decision(old_id, workspace_id=workspace_id)
+        if not old:
+            return None
+        if workspace_id and not self.get_decision(new_id, workspace_id=workspace_id):
+            return None
         now = _now()
         with self._conn() as c:
-            c.execute("UPDATE decisions SET status='superseded', superseded_by=?, superseded_at=?, updated_at=? WHERE id=?",
-                      (new_id, now, now, old_id))
-        return self.get_decision(old_id)
+            if workspace_id:
+                cur = c.execute(
+                    "UPDATE decisions SET status='superseded', superseded_by=?, superseded_at=?, updated_at=? "
+                    'WHERE id=? AND workspace_id=?',
+                    (new_id, now, now, old_id, workspace_id),
+                )
+            else:
+                cur = c.execute(
+                    "UPDATE decisions SET status='superseded', superseded_by=?, superseded_at=?, updated_at=? WHERE id=?",
+                    (new_id, now, now, old_id),
+                )
+            if cur.rowcount != 1:
+                return None
+        return self.get_decision(old_id, workspace_id=workspace_id)
 
     def add_sources(self, decision_id: str, sources: list, workspace_id: str = None) -> None:
+        if workspace_id and not self.get_decision(decision_id, workspace_id=workspace_id):
+            return
         now = _now()
         ws = workspace_id or self.get_default_workspace_id()
         with self._conn() as c:
             if not workspace_id:
                 row = c.execute('SELECT workspace_id FROM decisions WHERE id = ?', (decision_id,)).fetchone()
-                if row and row['workspace_id']:
+                if not row:
+                    return
+                if row['workspace_id']:
                     ws = row['workspace_id']
             for s in sources:
                 c.execute('''

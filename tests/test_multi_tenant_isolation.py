@@ -140,6 +140,33 @@ def test_token_cannot_mutate_other_workspace(app_client_factory, two_workspaces)
     assert r.status_code in (403, 404)
 
 
+def test_supersede_cannot_cross_workspaces(store, two_workspaces):
+    a, db_ = two_workspaces['a'], two_workspaces['db']
+    replacement = store.upsert_decision(
+        {'title': 'Acme replacement', 'summary': 's', 'reasoning': 'r'},
+        workspace_id=a['id'],
+    )
+    result = store.supersede(db_['id'], replacement['id'], workspace_id=a['id'])
+    assert result is None
+    still_active = store.get_decision(db_['id'], workspace_id=two_workspaces['b']['id'])
+    assert still_active['status'] == 'active'
+
+
+def test_token_cannot_supersede_other_workspace(store, app_client_factory, two_workspaces):
+    client, token_a = app_client_factory(workspace_id=two_workspaces['a']['id'], role='admin')
+    r = client.post(
+        f"/api/decisions/{two_workspaces['db']['id']}/supersede",
+        json={'title': 'hostile supersede', 'summary': 's', 'reasoning': 'r'},
+        headers={'X-Whyline-Key': token_a},
+    )
+    assert r.status_code in (403, 404)
+    still_active = store.get_decision(
+        two_workspaces['db']['id'],
+        workspace_id=two_workspaces['b']['id'],
+    )
+    assert still_active['status'] == 'active'
+
+
 @pytest.mark.parametrize('role,action,allowed', [
     ('viewer', 'read', True),
     ('viewer', 'create', False),
