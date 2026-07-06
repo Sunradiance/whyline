@@ -22,9 +22,24 @@ def _parse_role(raw, default: str = 'member') -> tuple[str | None, tuple | None]
     return role, None
 
 
-def _guard_owner_assignment(role: str, actor_role: str) -> tuple | None:
+def _role_rank(role: str) -> int:
+    return _ROLE_LEVEL.get(role, 0)
+
+
+def _guard_role_assignment(role: str, actor_role: str) -> tuple | None:
     if role == 'owner' and actor_role != 'owner':
         return jsonify({'error': 'only owners can assign or mint the owner role'}), 403
+    if _role_rank(role) > _role_rank(actor_role):
+        return jsonify({'error': 'cannot assign a role above your own'}), 403
+    return None
+
+
+def _guard_membership_change(actor_role: str, target_current_role: str | None, new_role: str) -> tuple | None:
+    blocked = _guard_role_assignment(new_role, actor_role)
+    if blocked:
+        return blocked
+    if target_current_role is not None and _role_rank(target_current_role) >= _role_rank(actor_role):
+        return jsonify({'error': 'cannot modify a member at or above your role'}), 403
     return None
 
 
@@ -101,9 +116,6 @@ def add_workspace_member(workspace_id):
     role, err = _parse_role(body.get('role'), 'member')
     if err:
         return err
-    blocked = _guard_owner_assignment(role, _actor_role() or '')
-    if blocked:
-        return blocked
     if not email:
         return jsonify({'error': 'email required'}), 400
     user = store.get_user_by_email(email)
@@ -112,6 +124,10 @@ def add_workspace_member(workspace_id):
             user = store.create_user(email, body.get('password') or None)
         else:
             return jsonify({'error': 'user not found — provision account first'}), 404
+    target_current = store.get_role(user['id'], g.workspace_id)
+    blocked = _guard_membership_change(_actor_role() or '', target_current, role)
+    if blocked:
+        return blocked
     m = store.add_member(g.workspace_id, user['id'], role)
     store.audit(g.workspace_id, g.actor.kind, g.actor.id, 'member.invite', 'user', user['id'], email)
     return jsonify({'ok': True, 'membership': m})
@@ -125,7 +141,7 @@ def create_workspace_token(workspace_id):
     role, err = _parse_role(body.get('role'), 'member')
     if err:
         return err
-    blocked = _guard_owner_assignment(role, _actor_role() or '')
+    blocked = _guard_role_assignment(role, _actor_role() or '')
     if blocked:
         return blocked
     raw, row = store.create_service_token(g.workspace_id, role=role, name=body.get('name', ''))

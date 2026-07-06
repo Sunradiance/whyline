@@ -190,6 +190,55 @@ def test_admin_cannot_patch_workspace_settings(app_client_factory, store):
     assert r.status_code == 403
 
 
+def test_admin_cannot_demote_owner(app_client_factory, store):
+    ws = store.create_workspace('Depose')
+    boss = store.create_user('boss@co.com', 'pass-12345')
+    admin_user = store.create_user('admin@co.com', 'pass-12345')
+    store.add_member(ws['id'], boss['id'], 'owner')
+    store.add_member(ws['id'], admin_user['id'], 'admin')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.post(
+        f"/api/workspaces/{ws['id']}/members",
+        json={'email': 'boss@co.com', 'role': 'viewer'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 403
+    assert store.get_role(boss['id'], ws['id']) == 'owner'
+
+
+def test_admin_cannot_modify_peer_admin(app_client_factory, store):
+    ws = store.create_workspace('PeerAdmin')
+    peer = store.create_user('peer@co.com', 'pass-12345')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    store.add_member(ws['id'], peer['id'], 'admin')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.post(
+        f"/api/workspaces/{ws['id']}/members",
+        json={'email': 'peer@co.com', 'role': 'member'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 403
+    assert store.get_role(peer['id'], ws['id']) == 'admin'
+
+
+def test_owner_can_demote_admin(app_client_factory, store):
+    ws = store.create_workspace('OwnerDemote')
+    sub = store.create_user('sub@co.com', 'pass-12345')
+    store.add_member(ws['id'], store.create_user('owner@co.com', 'pass-12345')['id'], 'owner')
+    store.add_member(ws['id'], sub['id'], 'admin')
+    token, _ = store.create_service_token(ws['id'], role='owner', name='owner')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='owner')
+    r = client.post(
+        f"/api/workspaces/{ws['id']}/members",
+        json={'email': 'sub@co.com', 'role': 'member'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 200
+    assert store.get_role(sub['id'], ws['id']) == 'member'
+
+
 def test_service_token_cannot_create_workspace(app_client_factory, store):
     ws = store.create_workspace('NoOrphan')
     token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
