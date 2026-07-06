@@ -168,17 +168,7 @@ npm run test
 
 ---
 
-## Support (voluntary)
-
-MIT licensed. No paywall. Ever.
-
-If you like this project, please support us with **SOL** on Solana:
-
-```
-B4ZFerkb7DctTLabgzh3F8aGhJF7EVDxcnLz6e2zqZwb
-```
-
-Running locally? Set `SOL_DONATION_ADDRESS` in `.env` (or use **◎ Support with SOL** in the app once configured). Voluntary tips only — Solana chain, SOL token.
+MIT licensed. No paywall. Optional voluntary tips: [SUPPORT.md](SUPPORT.md) (off by default).
 
 ---
 

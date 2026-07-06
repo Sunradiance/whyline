@@ -301,6 +301,8 @@ $('#api-key').addEventListener('change', (e) => { setApiKey(e.target.value); toa
   const h = await health();
   $('#db-status').textContent = h.apis?.db ? 'sqlite · local' : '—';
   S.donation = await donation();
+  const supportBtn = $('#btn-support');
+  if (supportBtn) supportBtn.hidden = !S.donation?.enabled;
   await reload();
   go('home');
 })();
