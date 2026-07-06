@@ -41,9 +41,11 @@ class Store(StoreIdentityMixin):
         from .migration_001 import migrate as migrate_001
         from .migration_002 import migrate as migrate_002
         from .migration_003 import migrate as migrate_003
+        from .migration_004 import migrate as migrate_004
         migrate_001(self)
         migrate_002(self)
         migrate_003(self)
+        migrate_004(self)
 
     def _now(self) -> str:
         return _now()

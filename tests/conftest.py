@@ -48,16 +48,22 @@ def store(monkeypatch):
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
     _purge_app_modules()
     from app.store.migration_001 import migrate as migrate_001
     from app.store.migration_002 import migrate as migrate_002
     from app.store.migration_003 import migrate as migrate_003
+    from app.store.migration_004 import migrate as migrate_004
     from app.store.sqlite import Store
     s = Store(path=db_path)
     migrate_001(s)
     migrate_002(s)
     migrate_003(s)
+    migrate_004(s)
+    import app.store as st_mod
+    st_mod._store = None
     yield s
+    st_mod._store = None
     try:
         os.unlink(db_path)
     except OSError:

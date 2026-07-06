@@ -39,22 +39,39 @@ def test_list_decisions_fail_closed_in_team_mode(store, monkeypatch):
     assert store.list_decisions(workspace_id=None) == []
 
 
-def test_mcp_resolves_default_workspace_in_solo(store, monkeypatch):
+def test_mcp_resolves_default_workspace_in_solo(monkeypatch):
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
     monkeypatch.setenv('WHYLINE_AUTH_MODE', 'solo')
     monkeypatch.delenv('MCP_WORKSPACE_ID', raising=False)
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
     from app.config import Config
-    Config.AUTH_MODE = 'solo'
-    store.upsert_decision(
-        {'title': 'MCP visible', 'summary': 's', 'reasoning': 'r'},
-        workspace_id=store.get_default_workspace_id(),
-    )
     from app.services.mcp_workspace import resolve_mcp_workspace_id
     from app.services.retrieval import score_decisions
+    from app.store.sqlite import Store
+    import app.store as st_mod
+
+    st_mod._store = None
+    s = Store(path=db_path)
+    st_mod._store = s
+    Config.AUTH_MODE = 'solo'
+    ws_id = s.get_default_workspace_id()
+    s.upsert_decision(
+        {'title': 'MCP visible', 'summary': 's', 'reasoning': 'r'},
+        workspace_id=ws_id,
+    )
     ws = resolve_mcp_workspace_id()
-    assert ws == store.get_default_workspace_id()
-    corpus = store.all_active_text_blob(workspace_id=ws)
+    assert ws == ws_id
+    corpus = s.all_active_text_blob(workspace_id=ws)
     top = score_decisions('MCP visible', corpus, top_k=5)
     assert len(top) >= 1
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
 
 
 def _decision_indexes(conn) -> list[str]:
@@ -69,6 +86,7 @@ def test_bare_store_never_resurrects_global_hash_index(monkeypatch):
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
     monkeypatch.setenv('WHYLINE_API_KEY', 'bare-store-key')
     for name in list(__import__('sys').modules):
         if name == 'app' or name.startswith('app.'):
@@ -165,6 +183,60 @@ def test_solo_to_team_revokes_legacy_god_key(monkeypatch):
     app.config['TESTING'] = True
     client = app.test_client()
     assert client.get('/api/decisions', headers={'X-Whyline-Key': solo_key}).status_code == 401
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
+
+
+def test_auth_mode_ratchet_blocks_solo_after_team(monkeypatch):
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
+    monkeypatch.delenv('WHYLINE_ALLOW_SOLO_DOWNGRADE', raising=False)
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.sqlite import Store
+
+    Store(path=db_path)
+
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'solo')
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.migration_004 import AuthModeRatchetError
+    from app.store.sqlite import Store
+
+    with pytest.raises(AuthModeRatchetError, match='ratcheted floor'):
+        Store(path=db_path)
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
+
+
+def test_auth_mode_ratchet_allows_explicit_downgrade(monkeypatch):
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.sqlite import Store
+
+    Store(path=db_path)
+
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'solo')
+    monkeypatch.setenv('WHYLINE_ALLOW_SOLO_DOWNGRADE', '1')
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.sqlite import Store
+
+    Store(path=db_path)
     try:
         os.unlink(db_path)
     except OSError:

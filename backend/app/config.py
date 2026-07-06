@@ -56,6 +56,11 @@ class Config:
     CAPTURE_RETRY_MAX_SECONDS = float(os.environ.get('CAPTURE_RETRY_MAX_SECONDS', '60'))
 
     AUTH_MODE = os.environ.get('WHYLINE_AUTH_MODE', 'solo')  # solo | team | open
+    ALLOW_SOLO_DOWNGRADE = os.environ.get('WHYLINE_ALLOW_SOLO_DOWNGRADE', '').strip().lower() in (
+        '1',
+        'true',
+        'yes',
+    )
     AUTH_RATE_LIMIT = int(os.environ.get('WHYLINE_AUTH_RATE_LIMIT', '20'))
 
     @classmethod

@@ -23,16 +23,19 @@ def isolated_env(monkeypatch):
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
     monkeypatch.setenv('WHYLINE_API_KEY', 'iso-test-key')
     _purge()
     from app.store.migration_001 import migrate as migrate_001
     from app.store.migration_002 import migrate as migrate_002
     from app.store.migration_003 import migrate as migrate_003
+    from app.store.migration_004 import migrate as migrate_004
     from app.store.sqlite import Store
     s = Store(path=db_path)
     migrate_001(s)
     migrate_002(s)
     migrate_003(s)
+    migrate_004(s)
     yield s, db_path
     try:
         os.unlink(db_path)
@@ -182,8 +185,10 @@ def test_migration_from_legacy_single_key(monkeypatch):
     r1 = migrate(s)
     from app.store.migration_002 import migrate as migrate_002
     from app.store.migration_003 import migrate as migrate_003
+    from app.store.migration_004 import migrate as migrate_004
     migrate_002(s)
     migrate_003(s)
+    migrate_004(s)
     assert r1['created_default_ws'] is True
     assert r1['backfilled']['decisions'] >= 1
     assert r1['god_key_migrated'] is True
@@ -191,6 +196,7 @@ def test_migration_from_legacy_single_key(monkeypatch):
     r2 = migrate(s)
     migrate_002(s)
     migrate_003(s)
+    migrate_004(s)
     assert r2['created_default_ws'] is False
     assert r2['backfilled']['decisions'] == 0
     assert r2['god_key_migrated'] is False
