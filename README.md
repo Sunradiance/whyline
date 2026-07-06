@@ -139,13 +139,32 @@ Docs: [`integrations/email`](integrations/email/README.md) · [`integrations/sla
 
 ---
 
+## Team mode & access control
+
+Set `WHYLINE_AUTH_MODE=team` (or `open`) for multi-tenant deployments. Solo stays the zero-config default.
+
+| Role | Read | Create decisions | Manage decisions | Invite/remove members, mint/revoke tokens | Workspace settings |
+|------|------|------------------|------------------|-------------------------------------------|-------------------|
+| viewer | ✓ | | | | |
+| member | ✓ | ✓ | | | |
+| admin | ✓ | ✓ | ✓ | ✓ | |
+| owner | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+**Deprovisioning:** remove a departed user's membership (`DELETE /api/workspaces/<id>/members/<user_id>`) and audit workspace tokens (`GET /api/workspaces/<id>/tokens`), revoking any that person may have seen (`DELETE /api/workspaces/<id>/tokens/<token_id>`).
+
+**Service tokens are infrastructure credentials** — workspace-scoped, not user-scoped. MCP, CI, and integration keys stay valid until explicitly revoked. That is intentional: tokens outlive any single human account. On offboarding, owners rotate tokens via the list endpoint; member removal does not cascade to tokens they minted.
+
+Auth mode ratchet: a DB that has booted `team`/`open` refuses to silently downgrade to `solo` if `WHYLINE_AUTH_MODE` is unset. Override only with `WHYLINE_ALLOW_SOLO_DOWNGRADE=1`.
+
+---
+
 ## Tests
 
 ```bash
 npm run test
 ```
 
-77 tests · CI on push to `main`
+97 tests · CI on push to `main`
 
 ---
 
