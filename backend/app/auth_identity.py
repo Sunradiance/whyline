@@ -53,7 +53,11 @@ def resolve_actor():
             return Actor('service', tok['token_id'], tok['workspace_id'], tok['role'])
         from .auth import ensure_api_key
         ensure_api_key()
-        if Config.WHYLINE_API_KEY and hmac.compare_digest(key, Config.WHYLINE_API_KEY):
+        if (
+            Config.AUTH_MODE == 'solo'
+            and Config.WHYLINE_API_KEY
+            and hmac.compare_digest(key, Config.WHYLINE_API_KEY)
+        ):
             return Actor('service', 'legacy', store.get_default_workspace_id(), 'admin')
         return None
 

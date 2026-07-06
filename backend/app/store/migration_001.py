@@ -48,6 +48,7 @@ def migrate(store) -> dict:
         'created_default_ws': False,
         'backfilled': {},
         'god_key_migrated': False,
+        'god_key_revoked': 0,
         'from_version': None,
         'to_version': SCHEMA_VERSION,
     }
@@ -135,6 +136,15 @@ def migrate(store) -> dict:
             )
             report['backfilled'][table] = cur.rowcount
 
+        from ..config import Config
+
+        auth_mode = (Config.AUTH_MODE or 'solo').strip().lower()
+
+        # Team/open: revoke solo-era god tokens — trial key must not survive upgrade.
+        if auth_mode != 'solo':
+            cur = c.execute("DELETE FROM service_tokens WHERE name = 'legacy-god-key'")
+            report['god_key_revoked'] = cur.rowcount
+
         legacy_key = os.environ.get('WHYLINE_API_KEY', '').strip()
         if not legacy_key:
             key_path = os.path.join(os.path.dirname(store.path), '.api_key')
@@ -142,7 +152,6 @@ def migrate(store) -> dict:
                 with open(key_path) as f:
                     legacy_key = f.read().strip()
         # Solo-only: never mint admin from WHYLINE_API_KEY in team/open deployments.
-        auth_mode = os.environ.get('WHYLINE_AUTH_MODE', 'solo').strip().lower()
         if legacy_key and auth_mode == 'solo' and _get_meta(c, 'god_key_migrated') != '1':
             th = _token_hash(legacy_key)
             exists = c.execute('SELECT 1 FROM service_tokens WHERE token_hash = ?', (th,)).fetchone()

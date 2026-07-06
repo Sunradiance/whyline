@@ -128,6 +128,49 @@ def test_mcp_workspace_fails_closed_in_team_mode(monkeypatch):
         pass
 
 
+def test_solo_to_team_revokes_legacy_god_key(monkeypatch):
+    """Mainline upgrade path: solo trial key must not stay admin after team flip."""
+    fd, db_path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    solo_key = 'solo-trial-master-key'
+    monkeypatch.setenv('WHYLINE_DB_PATH', db_path)
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'solo')
+    monkeypatch.setenv('WHYLINE_API_KEY', solo_key)
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app.store.sqlite import Store
+
+    s_solo = Store(path=db_path)
+    tok = s_solo.verify_service_token(solo_key)
+    assert tok is not None
+    assert tok['role'] == 'admin'
+
+    monkeypatch.setenv('WHYLINE_AUTH_MODE', 'team')
+    for name in list(__import__('sys').modules):
+        if name == 'app' or name.startswith('app.'):
+            del __import__('sys').modules[name]
+    from app import create_app
+    from app.config import Config
+    from app.services.mcp_workspace import resolve_mcp_workspace_id
+
+    assert Config.AUTH_MODE == 'team'
+    s_team = Store(path=db_path)
+    assert s_team.verify_service_token(solo_key) is None
+    Config.WHYLINE_API_KEY = solo_key
+    with pytest.raises(RuntimeError, match='MCP requires'):
+        resolve_mcp_workspace_id()
+
+    app = create_app()
+    app.config['TESTING'] = True
+    client = app.test_client()
+    assert client.get('/api/decisions', headers={'X-Whyline-Key': solo_key}).status_code == 401
+    try:
+        os.unlink(db_path)
+    except OSError:
+        pass
+
+
 def test_god_key_not_migrated_in_team_mode(monkeypatch):
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
