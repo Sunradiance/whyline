@@ -5,11 +5,27 @@ from flask import g, jsonify, request, session
 from ..auth_identity import require_csrf, require_workspace, resolve_actor
 from ..config import Config
 from ..store import store
+from ..store.identity_mixin import _ROLE_LEVEL
 from . import api_bp
+
+_VALID_ROLES = frozenset(_ROLE_LEVEL)
 
 
 def _actor_role():
     return getattr(g, 'actor', None) and g.actor.role
+
+
+def _parse_role(raw, default: str = 'member') -> tuple[str | None, tuple | None]:
+    role = (raw or default).strip()
+    if role not in _VALID_ROLES:
+        return None, (jsonify({'error': f'invalid role: {role}'}), 400)
+    return role, None
+
+
+def _guard_owner_assignment(role: str, actor_role: str) -> tuple | None:
+    if role == 'owner' and actor_role != 'owner':
+        return jsonify({'error': 'only owners can assign or mint the owner role'}), 403
+    return None
 
 
 @api_bp.route('/workspaces', methods=['GET'])
@@ -31,6 +47,8 @@ def create_workspace():
     actor = resolve_actor()
     if actor is None:
         return jsonify({'error': 'unauthorized'}), 401
+    if actor.kind == 'service':
+        return jsonify({'error': 'workspace creation requires a user session'}), 403
     body = request.get_json(silent=True) or {}
     name = (body.get('name') or 'New workspace').strip()
     ws = store.create_workspace(name, public_read=bool(body.get('public_read')))
@@ -75,12 +93,17 @@ def list_workspace_members(workspace_id):
 
 
 @api_bp.route('/workspaces/<workspace_id>/members', methods=['POST'])
-@require_workspace('admin')
+@require_workspace('manage')
 @require_csrf
 def add_workspace_member(workspace_id):
     body = request.get_json(silent=True) or {}
     email = (body.get('email') or '').strip().lower()
-    role = (body.get('role') or 'member').strip()
+    role, err = _parse_role(body.get('role'), 'member')
+    if err:
+        return err
+    blocked = _guard_owner_assignment(role, _actor_role() or '')
+    if blocked:
+        return blocked
     if not email:
         return jsonify({'error': 'email required'}), 400
     user = store.get_user_by_email(email)
@@ -95,11 +118,16 @@ def add_workspace_member(workspace_id):
 
 
 @api_bp.route('/workspaces/<workspace_id>/tokens', methods=['POST'])
-@require_workspace('admin')
+@require_workspace('manage')
 @require_csrf
 def create_workspace_token(workspace_id):
     body = request.get_json(silent=True) or {}
-    role = (body.get('role') or 'member').strip()
+    role, err = _parse_role(body.get('role'), 'member')
+    if err:
+        return err
+    blocked = _guard_owner_assignment(role, _actor_role() or '')
+    if blocked:
+        return blocked
     raw, row = store.create_service_token(g.workspace_id, role=role, name=body.get('name', ''))
     store.audit(g.workspace_id, g.actor.kind, g.actor.id, 'token.create', 'service_token', row['id'])
     return jsonify({'ok': True, 'token': raw, 'meta': row, 'note': 'Shown once — store securely.'})

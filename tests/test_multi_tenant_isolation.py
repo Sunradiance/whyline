@@ -152,6 +152,58 @@ def test_supersede_cannot_cross_workspaces(store, two_workspaces):
     assert still_active['status'] == 'active'
 
 
+def test_invalid_token_role_returns_400(app_client_factory, store):
+    ws = store.create_workspace('RoleVal')
+    token, _ = store.create_service_token(ws['id'], role='owner', name='owner')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='owner')
+    r = client.post(
+        f"/api/workspaces/{ws['id']}/tokens",
+        json={'role': 'superadmin'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 400
+    assert 'invalid role' in r.get_json().get('error', '')
+
+
+def test_admin_role_can_mint_token(app_client_factory, store):
+    ws = store.create_workspace('AdminMint')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.post(
+        f"/api/workspaces/{ws['id']}/tokens",
+        json={'role': 'member', 'name': 'bot'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 200
+    assert r.get_json().get('token')
+
+
+def test_admin_cannot_patch_workspace_settings(app_client_factory, store):
+    ws = store.create_workspace('AdminPatch')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    r = client.patch(
+        f"/api/workspaces/{ws['id']}",
+        json={'name': 'hijacked'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 403
+
+
+def test_service_token_cannot_create_workspace(app_client_factory, store):
+    ws = store.create_workspace('NoOrphan')
+    token, _ = store.create_service_token(ws['id'], role='admin', name='admin')
+    client, _ = app_client_factory(workspace_id=ws['id'], role='admin')
+    before = len(store.list_user_workspaces('nobody'))
+    r = client.post(
+        '/api/workspaces',
+        json={'name': 'Orphan WS'},
+        headers={'X-Whyline-Key': token},
+    )
+    assert r.status_code == 403
+    assert before == len(store.list_user_workspaces('nobody'))
+
+
 def test_token_cannot_supersede_other_workspace(store, app_client_factory, two_workspaces):
     client, token_a = app_client_factory(workspace_id=two_workspaces['a']['id'], role='admin')
     r = client.post(
